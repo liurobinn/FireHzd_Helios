@@ -1,5 +1,5 @@
 # FireHzd_Helios
-Arduino based software for Flight Computer ```V6.0 APOGEE```. Also compatable with ```V5.0 I Love Gravity``` and ```V4.0 Big Brain```. This is a software that is running based on an RTOS [Helios]([https://github.com/MannyPeterson](https://github.com/MannyPeterson/HeliOS))
+An stepped up version of [FireHzd](https://github.com/liurobinn/FireHzd). [FireHzd_Helios](https://github.com/liurobinn/FireHzd_Helios) is an Arduino based software for Flight Computer ```V6.0 APOGEE```. Also compatable with ```V5.0 I Love Gravity``` and ```V4.0 Big Brain```. This is a software that is running based on an RTOS [Helios](https://github.com/MannyPeterson/HeliOS)
 # Include 
 1. ```DMP``` output based on example code in [i2cdevlib](https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050) by Jeff Rowberg
 2. ```BMP280``` output based on SparkFun examples.
