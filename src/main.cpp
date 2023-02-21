@@ -13,7 +13,6 @@ Servo X08_Y;
 
 #define OUTPUT_READABLE_WORLDACCEL
 #define OUTPUT_READABLE_YAWPITCHROLL
-#define INTERRUPT_PIN 2
 #define LED_PIN 13
 
 bool blinkState = false;
