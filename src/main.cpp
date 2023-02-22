@@ -42,134 +42,130 @@ double roll;
 double yaw;
 
 void IMU_INIT(){
-    mpu.initialize();
-    mpu.dmpInitialize();
-
-    mpu.setXAccelOffset(1095);
-    mpu.setYAccelOffset(-1397);
-    mpu.setZAccelOffset(1468);
-    mpu.setXGyroOffset(-481);
-    mpu.setYGyroOffset(164);
-    mpu.setZGyroOffset(-10);
-    mpu.setDMPEnabled(true);
-    packetSize = mpu.dmpGetFIFOPacketSize();
-    fifoCount = mpu.getFIFOCount();
+        mpu.initialize();
+        mpu.dmpInitialize();
+        mpu.setXAccelOffset(1095);
+        mpu.setYAccelOffset(-1397);
+        mpu.setZAccelOffset(1468);
+        mpu.setXGyroOffset(-481);
+        mpu.setYGyroOffset(164);
+        mpu.setZGyroOffset(-10);
+        mpu.setDMPEnabled(true);
+        packetSize = mpu.dmpGetFIFOPacketSize();
+        fifoCount = mpu.getFIFOCount();
 }
 
 void imuTask_main(xTask task_, xTaskParm param_){
 
-  if (fifoCount < packetSize){
-      fifoCount = mpu.getFIFOCount();
-  } 
-  else{
-    if (fifoCount == 1024) {
-    
-        mpu.resetFIFO();
-        Serial.println(F("FIFO overflow!"));
-        
-    }
-    else{
-    
-      if (fifoCount % packetSize != 0) {
-        
-          mpu.resetFIFO();
-            
-      }
+        if (fifoCount < packetSize) {
+                fifoCount = mpu.getFIFOCount();
+        }
         else{
-    
-            while (fifoCount >= packetSize) {
-            
-                mpu.getFIFOBytes(fifoBuffer,packetSize);
-                fifoCount -= packetSize;
-                
-            }    
-        
-            mpu.dmpGetQuaternion(&q,fifoBuffer);
-            mpu.dmpGetGravity(&gravity,&q);
-            mpu.dmpGetYawPitchRoll(ypr,&q,&gravity);          
-            
-            Serial.print("ypr\t");
-            Serial.print(ypr[0]*180/PI);
-            Serial.print("\t");
-            Serial.print(ypr[1]*180/PI);
-            Serial.print("\t");
-            Serial.print(ypr[2]*180/PI);
-            Serial.println();
-            
-      }
-    }
-  }
+                if (fifoCount == 1024) {
+                        mpu.resetFIFO();
+                        Serial.println(F("FIFO overflow!"));
+                }
+                else{
+                        if (fifoCount % packetSize != 0) {
+                                mpu.resetFIFO();
+                        }
+                        else{
+                                while (fifoCount >= packetSize) {
+                                        mpu.getFIFOBytes(fifoBuffer,packetSize);
+                                        fifoCount -= packetSize;
+                                }
+
+                                mpu.dmpGetQuaternion(&q,fifoBuffer);
+                                mpu.dmpGetGravity(&gravity,&q);
+                                mpu.dmpGetYawPitchRoll(ypr,&q,&gravity);
+
+                                Serial.print("ypr\t");
+                                Serial.print(ypr[0]*180/PI);
+                                Serial.print("\t");
+                                Serial.print(ypr[1]*180/PI);
+                                Serial.print("\t");
+                                Serial.print(ypr[2]*180/PI);
+                                Serial.println();
+                        }
+                }
+        }
 }
 
 void servoTaskX_main(xTask task_, xTaskParm parm_) {
-  double roll;
-  static int t;
+        double roll;
+        static int t;
 
-  if (1440 == t){
-      xTaskSuspend(task_);
-  }
-      roll=asin(0.05*cos((3.14/180)*t));
+        if (1440 == t) {
+                xTaskSuspend(task_);
+        }
 
-      X08_X.write(roll*180+90);
-      t++;
-      Serial.println(t);
-  return;
+        roll=asin(0.05*cos((3.14/180)*t));
+        X08_X.write(roll*180+90);
+
+        t++;
+
+        Serial.println(t);
+        return;
 }
 
 void servoTaskY_main(xTask task_, xTaskParm parm_) {
-  double pitch;
+        double pitch;
+        static int t;
 
-  static int t;
+        if (1440 == t) {
+                xTaskSuspend(task_);
+        }
 
-  if (1440 == t){
-      xTaskSuspend(task_);
-  }
-      pitch=asin(0.07*sin((3.14/180)*t));
+        pitch=asin(0.07*sin((3.14/180)*t));
+        X08_Y.write(pitch*180+90);
+        
+        t++;
 
-      X08_Y.write(pitch*180+90);
-      t++;
-      Serial.println(t);
-  return;
+        Serial.println(t);
+        return;
 }
 
 void setup() {
-  Serial.begin(9600);
-  Wire.begin();
-  TWBR = 24;
-  Serial.println("initialized");
-  X08_X.attach(3);
-  X08_Y.attach(4);
+        Serial.begin(9600);
+        Wire.begin();
+        
+        TWBR = 24;
 
-  X08_X.write(90);
-  X08_Y.write(90);
-  IMU_INIT();
+        Serial.println("initialized");
 
-  xSystemInit();
+        X08_X.attach(3);
+        X08_Y.attach(4);
 
-  xTask servoXTest = xTaskCreate("TESTX", servoTaskX_main, NULL);
-  xTask servoYTest = xTaskCreate("TESTY", servoTaskY_main, NULL);
-  xTask IMU_Update = xTaskCreate("IMU", imuTask_main, NULL);
+        X08_X.write(90);
+        X08_Y.write(90);
+        IMU_INIT();
 
-if (servoXTest && servoYTest && IMU_Update) {
+        xSystemInit();
 
-    xTaskWait(servoXTest);
-    xTaskWait(servoYTest);
-    xTaskWait(IMU_Update);
+        xTask servoXTest = xTaskCreate("TESTX", servoTaskX_main, NULL);
+        xTask servoYTest = xTaskCreate("TESTY", servoTaskY_main, NULL);
+        xTask IMU_Update = xTaskCreate("IMU", imuTask_main, NULL);
 
-    xTaskChangePeriod(servoXTest, 5);
-    xTaskChangePeriod(servoYTest, 5);
-    xTaskChangePeriod(IMU_Update, 1);
+        if (servoXTest && servoYTest && IMU_Update) {
 
-    xTaskStartScheduler();
+                xTaskWait(servoXTest);
+                xTaskWait(servoYTest);
+                xTaskWait(IMU_Update);
 
-    xTaskDelete(servoXTest);
-    xTaskDelete(servoYTest);
-    xTaskDelete(IMU_Update);
-  }
+                xTaskChangePeriod(servoXTest, 5);
+                xTaskChangePeriod(servoYTest, 5);
+                xTaskChangePeriod(IMU_Update, 1);
 
-  xSystemHalt();
+                xTaskStartScheduler();
+
+                xTaskDelete(servoXTest);
+                xTaskDelete(servoYTest);
+                xTaskDelete(IMU_Update);
+        }
+
+        xSystemHalt();
 }
 
 void loop() {
-  /* The loop function is not used and should remain empty. */
+        /* The loop function is not used and should remain empty. */
 }
