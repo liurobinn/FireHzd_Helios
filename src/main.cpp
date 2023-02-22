@@ -55,7 +55,8 @@ void IMU_INIT(){
         fifoCount = mpu.getFIFOCount();
 }
 
-void imuTask_main(xTask task_, xTaskParm param_){
+
+void getPitch_main(xTask task_, xTaskParm param_){
 
         if (fifoCount < packetSize) {
                 fifoCount = mpu.getFIFOCount();
@@ -81,8 +82,66 @@ void imuTask_main(xTask task_, xTaskParm param_){
 
                                 Serial.print("ypr\t");
                                 Serial.print(ypr[0]*180/PI);
+                        }
+                }
+        }
+}
+
+void getYaw_main(xTask task_, xTaskParm param_){
+
+        if (fifoCount < packetSize) {
+                fifoCount = mpu.getFIFOCount();
+        }
+        else{
+                if (fifoCount == 1024) {
+                        mpu.resetFIFO();
+                        Serial.println(F("FIFO overflow!"));
+                }
+                else{
+                        if (fifoCount % packetSize != 0) {
+                                mpu.resetFIFO();
+                        }
+                        else{
+                                while (fifoCount >= packetSize) {
+                                        mpu.getFIFOBytes(fifoBuffer,packetSize);
+                                        fifoCount -= packetSize;
+                                }
+
+                                mpu.dmpGetQuaternion(&q,fifoBuffer);
+                                mpu.dmpGetGravity(&gravity,&q);
+                                mpu.dmpGetYawPitchRoll(ypr,&q,&gravity);
+
                                 Serial.print("\t");
                                 Serial.print(ypr[1]*180/PI);
+                        }
+                }
+        }
+}
+
+void getRoll_main(xTask task_, xTaskParm param_){
+
+        if (fifoCount < packetSize) {
+                fifoCount = mpu.getFIFOCount();
+        }
+        else{
+                if (fifoCount == 1024) {
+                        mpu.resetFIFO();
+                        Serial.println(F("FIFO overflow!"));
+                }
+                else{
+                        if (fifoCount % packetSize != 0) {
+                                mpu.resetFIFO();
+                        }
+                        else{
+                                while (fifoCount >= packetSize) {
+                                        mpu.getFIFOBytes(fifoBuffer,packetSize);
+                                        fifoCount -= packetSize;
+                                }
+
+                                mpu.dmpGetQuaternion(&q,fifoBuffer);
+                                mpu.dmpGetGravity(&gravity,&q);
+                                mpu.dmpGetYawPitchRoll(ypr,&q,&gravity);
+
                                 Serial.print("\t");
                                 Serial.print(ypr[2]*180/PI);
                                 Serial.println();
@@ -144,23 +203,31 @@ void setup() {
 
         xTask servoXTest = xTaskCreate("TESTX", servoTaskX_main, NULL);
         xTask servoYTest = xTaskCreate("TESTY", servoTaskY_main, NULL);
-        xTask IMU_Update = xTaskCreate("IMU", imuTask_main, NULL);
+        xTask xTask_Pitch_Update = xTaskCreate("PITCH", getPitch_main, NULL);
+        xTask xTask_Yaw_Update = xTaskCreate("YAW", getYaw_main, NULL);
+        xTask xTask_Roll_Update = xTaskCreate("ROLL", getRoll_main, NULL);
 
-        if (servoXTest && servoYTest && IMU_Update) {
+        if (servoXTest && servoYTest && xTask_Pitch_Update && xTask_Yaw_Update && xTask_Roll_Update) {
 
                 xTaskWait(servoXTest);
                 xTaskWait(servoYTest);
-                xTaskWait(IMU_Update);
+                xTaskWait(xTask_Pitch_Update);
+                xTaskWait(xTask_Yaw_Update);
+                xTaskWait(xTask_Roll_Update);
 
                 xTaskChangePeriod(servoXTest, 5);
                 xTaskChangePeriod(servoYTest, 5);
-                xTaskChangePeriod(IMU_Update, 1);
+                xTaskChangePeriod(xTask_Pitch_Update, 1);
+                xTaskChangePeriod(xTask_Yaw_Update, 1);
+                xTaskChangePeriod(xTask_Roll_Update, 1);
 
                 xTaskStartScheduler();
 
                 xTaskDelete(servoXTest);
                 xTaskDelete(servoYTest);
-                xTaskDelete(IMU_Update);
+                xTaskDelete(xTask_Pitch_Update);
+                xTaskDelete(xTask_Yaw_Update);
+                xTaskDelete(xTask_Roll_Update);
         }
 
         xSystemHalt();
