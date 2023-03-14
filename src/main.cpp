@@ -41,30 +41,34 @@ double pitch;
 double roll;
 double yaw;
 
+Adafruit_BMP280 bmp;
+Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
+Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
+
 float determinant(float matrix[][10], int n) {
-  float det = 0;
-  if (n == 1) {
-    det = matrix[0][0];
-  } else if (n == 2) {
-    det = matrix[0][0]*matrix[1][1] - matrix[0][1]*matrix[1][0];
-  } else {
-    for (int k = 0; k < n; k++) {
-      float submatrix[10][10];
-      int i = 0;
-      for (int row = 1; row < n; row++) {
-        int j = 0;
-        for (int col = 0; col < n; col++) {
-          if (col != k) {
-            submatrix[i][j] = matrix[row][col];
-            j++;
-          }
+        float det = 0;
+        if (n == 1) {
+                det = matrix[0][0];
+        } else if (n == 2) {
+                det = matrix[0][0]*matrix[1][1] - matrix[0][1]*matrix[1][0];
+        } else {
+                for (int k = 0; k < n; k++) {
+                        float submatrix[10][10];
+                        int i = 0;
+                        for (int row = 1; row < n; row++) {
+                                int j = 0;
+                                for (int col = 0; col < n; col++) {
+                                        if (col != k) {
+                                                submatrix[i][j] = matrix[row][col];
+                                                j++;
+                                        }
+                                }
+                                i++;
+                        }
+                        det += pow(-1, k)*matrix[0][k]*determinant(submatrix, n-1);
+                }
         }
-        i++;
-      }
-      det += pow(-1, k)*matrix[0][k]*determinant(submatrix, n-1);
-    }
-  }
-  return det;
+        return det;
 }
 
 // float matrix[4][4] = {{1, 2, 3, 4},
@@ -76,37 +80,54 @@ float determinant(float matrix[][10], int n) {
 // Serial.print("Determinant = ");
 // Serial.println(det);
 
-double oppoLengthLawOfCosine (double a, double b, double angleInRadians){
-    return sqrt(a*a + b*b - 2*a*b*cos(angleInRadians));
+
+void BMP_INIT(){
+        if (!bmp.begin()) {
+                        Serial.println(F("Could not find a valid BMP280 sensor, check wiring or "
+                                 "try a different address!"));
+                }
+
+                bmp.setSampling(Adafruit_BMP280::MODE_FORCED, /* Operating Mode. */
+                        Adafruit_BMP280::SAMPLING_X2, /* Temp. oversampling */
+                        Adafruit_BMP280::SAMPLING_X16, /* Pressure oversampling */
+                        Adafruit_BMP280::FILTER_OFF); /* Filtering. */
 }
-
-double oppoAngleLawOfCosine(double a, double b, double c) {
-    // Calculate the cosine of the unknown angle using the law of cosines
-    double cos_angle = (a*a + b*b - c*c) / (2*a*b);
-
-    // Convert the cosine to an angle in radians using the inverse cosine function
-    double angle = acos(cos_angle);
-
-    return angle;
-}
-
 void IMU_INIT(){
         mpu.initialize();
         mpu.dmpInitialize();
-        mpu.setXAccelOffset(1095);
-        mpu.setYAccelOffset(-1397);
-        mpu.setZAccelOffset(1468);
-        mpu.setXGyroOffset(-481);
-        mpu.setYGyroOffset(164);
-        mpu.setZGyroOffset(-10);
+        mpu.setXAccelOffset(-1685);
+        mpu.setYAccelOffset(-2219);
+        mpu.setZAccelOffset(1259);
+        mpu.setXGyroOffset(61);
+        mpu.setYGyroOffset(-70);
+        mpu.setZGyroOffset(93);
         mpu.setDMPEnabled(true);
         packetSize = mpu.dmpGetFIFOPacketSize();
         fifoCount = mpu.getFIFOCount();
+        mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_2000);
 }
 
+void getAltitude_main(xTask task_, xTaskParm param_){
+        xTaskNotification notif = xTaskNotifyTake(task_);
 
-void getPitch_main(xTask task_, xTaskParm param_){
+        if (notif) {
 
+                bmp.takeForcedMeasurement();
+                float altitude = bmp.readAltitude(1018.55); // Change to your local pressure
+                Serial.print("Approx altitude = ");
+                Serial.print(altitude);
+                Serial.println(" m");
+
+                /* Free the heap memory allocated for the direct-to-task
+                   notification. */
+                xMemFree(notif);
+        }
+
+}
+
+void getYPR_main(xTask task_, xTaskParm param_){
+        static double lastPitch;
+        static double lastYaw;
         if (fifoCount < packetSize) {
                 fifoCount = mpu.getFIFOCount();
         }
@@ -128,115 +149,72 @@ void getPitch_main(xTask task_, xTaskParm param_){
                                 mpu.dmpGetQuaternion(&q,fifoBuffer);
                                 mpu.dmpGetGravity(&gravity,&q);
                                 mpu.dmpGetYawPitchRoll(ypr,&q,&gravity);
-
-                                Serial.print("ypr\t");
+                                double curPitch = ypr[1]*180/PI+90;
+                                double curYaw = ypr[2]*180/PI+90;
+                                Serial.print("Roll:\t");
                                 Serial.print(ypr[0]*180/PI);
-                        }
-                }
-        }
-}
-
-void getYaw_main(xTask task_, xTaskParm param_){
-
-        if (fifoCount < packetSize) {
-                fifoCount = mpu.getFIFOCount();
-        }
-        else{
-                if (fifoCount == 1024) {
-                        mpu.resetFIFO();
-                        Serial.println(F("FIFO overflow!"));
-                }
-                else{
-                        if (fifoCount % packetSize != 0) {
-                                mpu.resetFIFO();
-                        }
-                        else{
-                                while (fifoCount >= packetSize) {
-                                        mpu.getFIFOBytes(fifoBuffer,packetSize);
-                                        fifoCount -= packetSize;
-                                }
-
-                                mpu.dmpGetQuaternion(&q,fifoBuffer);
-                                mpu.dmpGetGravity(&gravity,&q);
-                                mpu.dmpGetYawPitchRoll(ypr,&q,&gravity);
-
-                                Serial.print("\t");
-                                Serial.print(ypr[1]*180/PI);
-                        }
-                }
-        }
-}
-
-void getRoll_main(xTask task_, xTaskParm param_){
-
-        if (fifoCount < packetSize) {
-                fifoCount = mpu.getFIFOCount();
-        }
-        else{
-                if (fifoCount == 1024) {
-                        mpu.resetFIFO();
-                        Serial.println(F("FIFO overflow!"));
-                }
-                else{
-                        if (fifoCount % packetSize != 0) {
-                                mpu.resetFIFO();
-                        }
-                        else{
-                                while (fifoCount >= packetSize) {
-                                        mpu.getFIFOBytes(fifoBuffer,packetSize);
-                                        fifoCount -= packetSize;
-                                }
-
-                                mpu.dmpGetQuaternion(&q,fifoBuffer);
-                                mpu.dmpGetGravity(&gravity,&q);
-                                mpu.dmpGetYawPitchRoll(ypr,&q,&gravity);
-
-                                Serial.print("\t");
-                                Serial.print(ypr[2]*180/PI);
+                                Serial.print("\tPitch:\t");
+                                Serial.print(curPitch);
+                                Serial.print("\tYaw:\t");
+                                Serial.print(curYaw);
+                                Serial.print("\tOMEGA_Pitch:\t");
+                                Serial.print((curPitch - lastPitch)/0.005);
+                                Serial.print("\tOMEGA_Yaw:\t");
+                                Serial.print((curYaw - lastYaw)/0.005);
                                 Serial.println();
+                                lastPitch = curPitch;
+                                lastYaw = curYaw;
                         }
                 }
         }
+        // xTask receiver = xTaskGetHandleByName("ALT");
+        // if (receiver) {
+
+        //         /* Send the direct-to-task notification of "HELLO"
+        //            which is five bytes. */
+        //         xTaskNotifyGive(receiver, 1, "W");
+        // }
 }
 
-void servoTaskX_main(xTask task_, xTaskParm parm_) {
-        double roll;
-        static int t;
 
-        if (1440 == t) {
-                xTaskSuspend(task_);
-        }
+// void servoTaskX_main(xTask task_, xTaskParm parm_) {
+//         double roll;
+//         static int t;
 
-        roll=asin(0.05*cos((3.14/180)*t));
-        X08_X.write(roll*180+90);
+//         if (1440 == t) {
+//                 xTaskSuspend(task_);
+//         }
 
-        t++;
+//         roll=asin(0.05*cos((3.14/180)*t));
+//         X08_X.write(roll*180+90);
 
-        Serial.println(t);
-        return;
-}
+//         t++;
 
-void servoTaskY_main(xTask task_, xTaskParm parm_) {
-        double pitch;
-        static int t;
+//         Serial.println(t);
+//         return;
+// }
 
-        if (1440 == t) {
-                xTaskSuspend(task_);
-        }
+// void servoTaskY_main(xTask task_, xTaskParm parm_) {
+//         double pitch;
+//         static int t;
 
-        pitch=asin(0.07*sin((3.14/180)*t));
-        X08_Y.write(pitch*180+90);
-        
-        t++;
+//         if (1440 == t) {
+//                 xTaskSuspend(task_);
+//         }
 
-        Serial.println(t);
-        return;
-}
+//         pitch=asin(0.07*sin((3.14/180)*t));
+//         X08_Y.write(pitch*180+90);
+
+//         t++;
+
+//         Serial.println(t);
+//         return;
+// }
 
 void setup() {
         Serial.begin(9600);
         Wire.begin();
-        
+
         TWBR = 24;
 
         Serial.println("initialized");
@@ -247,36 +225,27 @@ void setup() {
         X08_X.write(90);
         X08_Y.write(90);
         IMU_INIT();
+        BMP_INIT();
 
         xSystemInit();
 
-        xTask servoXTest = xTaskCreate("TESTX", servoTaskX_main, NULL);
-        xTask servoYTest = xTaskCreate("TESTY", servoTaskY_main, NULL);
-        xTask xTask_Pitch_Update = xTaskCreate("PITCH", getPitch_main, NULL);
-        xTask xTask_Yaw_Update = xTaskCreate("YAW", getYaw_main, NULL);
-        xTask xTask_Roll_Update = xTaskCreate("ROLL", getRoll_main, NULL);
+        xTask xTask_YPR_Update = xTaskCreate("YPR", getYPR_main, NULL);
+        xTask xTask_Altitude_Update = xTaskCreate("ALT", getAltitude_main, NULL);
 
-        if (servoXTest && servoYTest && xTask_Pitch_Update && xTask_Yaw_Update && xTask_Roll_Update) {
+        if (xTask_YPR_Update && xTask_Altitude_Update) {
 
-                xTaskWait(servoXTest);
-                xTaskWait(servoYTest);
-                xTaskWait(xTask_Pitch_Update);
-                xTaskWait(xTask_Yaw_Update);
-                xTaskWait(xTask_Roll_Update);
+                xTaskWait(xTask_YPR_Update);
+                xTaskWait(xTask_Altitude_Update);
 
-                xTaskChangePeriod(servoXTest, 5);
-                xTaskChangePeriod(servoYTest, 5);
-                xTaskChangePeriod(xTask_Pitch_Update, 1);
-                xTaskChangePeriod(xTask_Yaw_Update, 1);
-                xTaskChangePeriod(xTask_Roll_Update, 1);
+                xTaskChangePeriod(xTask_YPR_Update, 1);
+                // xTaskChangePeriod(xTask_Altitude_Update, 1);
 
                 xTaskStartScheduler();
 
-                xTaskDelete(servoXTest);
-                xTaskDelete(servoYTest);
-                xTaskDelete(xTask_Pitch_Update);
-                xTaskDelete(xTask_Yaw_Update);
-                xTaskDelete(xTask_Roll_Update);
+                // xTaskDelete(xTask_Pitch_Update);
+                xTaskDelete(xTask_YPR_Update);
+                // xTaskDelete(xTask_Roll_Update);
+                xTaskDelete(xTask_Altitude_Update);
         }
 
         xSystemHalt();
