@@ -18,8 +18,6 @@ Servo X08_Y;
 bool blinkState = false;
 bool dmpReady = false;
 
-uint8_t mpuIntStatus;
-uint8_t devStatus;
 uint16_t packetSize;
 uint16_t fifoCount;
 uint8_t fifoBuffer[64];
