@@ -87,10 +87,10 @@ void BMP_INIT(){
                                  "try a different address!"));
                 }
 
-                bmp.setSampling(Adafruit_BMP280::MODE_FORCED, /* Operating Mode. */
-                        Adafruit_BMP280::SAMPLING_X2, /* Temp. oversampling */
+                bmp.setSampling(Adafruit_BMP280::MODE_NORMAL, /* Operating Mode. */
+                        Adafruit_BMP280::SAMPLING_X4, /* Temp. oversampling */
                         Adafruit_BMP280::SAMPLING_X16, /* Pressure oversampling */
-                        Adafruit_BMP280::FILTER_OFF); /* Filtering. */
+                        Adafruit_BMP280::FILTER_X2); /* Filtering. */
 }
 void IMU_INIT(){
         mpu.initialize();
@@ -112,11 +112,10 @@ void getAltitude_main(xTask task_, xTaskParm param_){
 
         if (notif) {
 
-                bmp.takeForcedMeasurement();
                 float altitude = bmp.readAltitude(1018.55); // Change to your local pressure
-                Serial.print("Approx altitude = ");
+                Serial.print("\tALT=\t");
                 Serial.print(altitude);
-                Serial.println(" m");
+                Serial.println("\tm");
 
                 /* Free the heap memory allocated for the direct-to-task
                    notification. */
@@ -161,19 +160,17 @@ void getYPR_main(xTask task_, xTaskParm param_){
                                 Serial.print((curPitch - lastPitch)/0.005);
                                 Serial.print("\tOMEGA_Yaw:\t");
                                 Serial.print((curYaw - lastYaw)/0.005);
-                                Serial.println();
                                 lastPitch = curPitch;
                                 lastYaw = curYaw;
                         }
                 }
         }
-        // xTask receiver = xTaskGetHandleByName("ALT");
-        // if (receiver) {
 
-        //         /* Send the direct-to-task notification of "HELLO"
-        //            which is five bytes. */
-        //         xTaskNotifyGive(receiver, 1, "W");
-        // }
+        //call the altitude function
+        xTask receiver = xTaskGetHandleByName("ALT");
+        if (receiver) {
+                xTaskNotifyGive(receiver, 1, "W");
+        }
 }
 
 
@@ -238,13 +235,10 @@ void setup() {
                 xTaskWait(xTask_Altitude_Update);
 
                 xTaskChangePeriod(xTask_YPR_Update, 1);
-                // xTaskChangePeriod(xTask_Altitude_Update, 1);
 
                 xTaskStartScheduler();
 
-                // xTaskDelete(xTask_Pitch_Update);
                 xTaskDelete(xTask_YPR_Update);
-                // xTaskDelete(xTask_Roll_Update);
                 xTaskDelete(xTask_Altitude_Update);
         }
 
