@@ -125,21 +125,21 @@ void LED_INIT(){
 }
 
 void LED_TEST() {
-    // Flash the LED
-    digitalWrite(LED_RED, LOW);
-    delay(500);
-    digitalWrite(LED_RED, HIGH);
-    delay(500);
+        // Flash the LED
+        digitalWrite(LED_RED, LOW);
+        delay(500);
+        digitalWrite(LED_RED, HIGH);
+        delay(500);
 
-    digitalWrite(LED_BLUE, LOW);
-    delay(500);
-    digitalWrite(LED_BLUE, HIGH);
-    delay(500);
+        digitalWrite(LED_BLUE, LOW);
+        delay(500);
+        digitalWrite(LED_BLUE, HIGH);
+        delay(500);
 
-    digitalWrite(LED_GREEN, LOW);
-    delay(500);
-    digitalWrite(LED_GREEN, HIGH);
-    delay(500);
+        digitalWrite(LED_GREEN, LOW);
+        delay(500);
+        digitalWrite(LED_GREEN, HIGH);
+        delay(500);
 
 }
 
@@ -152,9 +152,9 @@ void BUZZER_INIT(){
 }
 
 void BUZZER_TEST() {
-  BUZZER_INIT(); // initialize buzzer
+        BUZZER_INIT(); // initialize buzzer
 
-  // define note frequencies in Hz
+        // define note frequencies in Hz
   #define NOTE_C5 523
   #define NOTE_D5 587
   #define NOTE_E5 659
@@ -162,19 +162,19 @@ void BUZZER_TEST() {
   #define NOTE_G5 784
   #define NOTE_A5 880
 
-  // define melody notes and durations
-  int melody[] = { NOTE_C5, NOTE_E5, NOTE_G5, NOTE_A5,
-                   NOTE_G5, NOTE_E5, NOTE_C5 };
-  int noteDurations[] = { 4, 4, 4, 4,
-                          4, 4, 2 };
+        // define melody notes and durations
+        int melody[] = { NOTE_C5, NOTE_E5, NOTE_G5, NOTE_A5,
+                         NOTE_G5, NOTE_E5, NOTE_C5 };
+        int noteDurations[] = { 4, 4, 4, 4,
+                                4, 4, 2 };
 
-  // play melody
-  for (int i = 0; i < sizeof(melody)/sizeof(melody[0]); i++) {
-    int duration = 1000 / noteDurations[i];
-    tone(BUZZER_PIN, melody[i], duration);
-    delay(duration * 1.30);
-    noTone(BUZZER_PIN);
-  }
+        // play melody
+        for (int i = 0; i < sizeof(melody)/sizeof(melody[0]); i++) {
+                int duration = 1000 / noteDurations[i];
+                tone(BUZZER_PIN, melody[i], duration);
+                delay(duration * 1.30);
+                noTone(BUZZER_PIN);
+        }
 }
 
 /* IMU Initiation */
@@ -353,7 +353,7 @@ void setup() {
 
         LED_INIT();
         LED_TEST();
-        
+
         PYRO_INIT();
         /* Initialize system tasks */
         xSystemInit();
