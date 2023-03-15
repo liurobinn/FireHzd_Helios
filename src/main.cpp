@@ -83,7 +83,6 @@ float determinant(float matrix[][10], int n) {
         }
         return det; /* return the determinant */
 }
-
 // float matrix[4][4] = {{1, 2, 3, 4},
 //                       {5, 6, 7, 8},
 //                       {9, 10, 11, 12},
@@ -115,17 +114,13 @@ void BMP_INIT(){
 
 /* LED Initiation*/
 void LED_INIT(){
-        pinMode(LED_RED, OUTPUT);               //R
-        pinMode(LED_GREEN, OUTPUT);             //G
-        pinMode(LED_BLUE, OUTPUT);              //B
-
-        // digitalWrite(14, HIGH);
-        // digitalWrite(15, HIGH);
-        // digitalWrite(16, HIGH);
+        pinMode(LED_RED, OUTPUT);   //R
+        pinMode(LED_GREEN, OUTPUT); //G
+        pinMode(LED_BLUE, OUTPUT);  //B
 }
 
 void LED_TEST() {
-        // Flash the LED
+        /*Flash the LED*/
         digitalWrite(LED_RED, LOW);
         delay(500);
         digitalWrite(LED_RED, HIGH);
@@ -140,10 +135,7 @@ void LED_TEST() {
         delay(500);
         digitalWrite(LED_GREEN, HIGH);
         delay(500);
-
 }
-
-
 
 /* Buzzer Initiation*/
 void BUZZER_INIT(){
@@ -152,8 +144,6 @@ void BUZZER_INIT(){
 }
 
 void BUZZER_TEST() {
-        BUZZER_INIT(); // initialize buzzer
-
         // define note frequencies in Hz
   #define NOTE_C5 523
   #define NOTE_D5 587
