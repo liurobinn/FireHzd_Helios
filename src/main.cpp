@@ -12,11 +12,16 @@
 Servo X08_X;
 Servo X08_Y;
 
-#define OUTPUT_READABLE_WORLDACCEL
-#define OUTPUT_READABLE_YAWPITCHROLL
+PID xPID;
+PID yPID;
 
 /*Define buzzer with its pin number*/
 #define BUZZER_PIN 10
+
+#define F15Impulse 25.26
+#define WETMASS 1.2
+#define CRITICAL_LAUNCH_ACCELERATION 15.45 //m/s^2 upwards
+#define GRAVITATION_ACCELERATION -9.81 //m/s^2
 
 /*Define three LED colors with their pin numbers*/
 #define LED_RED 14
@@ -46,12 +51,12 @@ VectorFloat gravity;
 MPU6050 mpu;
 float euler[3];
 float ypr[3];
-double val=0;
-double prev;
+float val=0;
+float prev;
 
-double pitch;
-double roll;
-double yaw;
+float pitch;
+float roll;
+float yaw;
 int16_t ax, ay, az;
 
 Adafruit_BMP280 bmp;
@@ -91,6 +96,38 @@ float determinant(float matrix[][10], int n) {
 // float det = determinant(matrix, n);
 // Serial.print("Determinant = ");
 // Serial.println(det);
+
+class PID {
+private:
+        float lastTime = micros();
+        float integral = 0;
+        float lastErr = 90      ;
+
+public:
+        float p;
+        float i;
+        float d;
+
+        float UPDATE(float curErr) { //curErr should be in degrees/s
+                float curTime = millis()/1000;
+                float dt = (curTime - lastTime);
+                float dx = curErr - lastErr;
+                lastErr=curErr;
+                integral += curErr*dt;
+                lastTime = millis()/1000;
+        return p*curErr + i*integral + d*dx/dt;
+}
+};
+
+bool launch_Detected(){
+        mpu.getAcceleration(&ax, &ay, &az);
+        float curZ_Acc = (az/4096.0)*9.81;
+        if(curZ_Acc > CRITICAL_LAUNCH_ACCELERATION-2){
+                return true;
+        }else{
+                return false;
+        }
+}
 
 void PYRO_INIT(){
         pinMode(PYRO_LL, OUTPUT);   /* Set the lower left pyroelectric sensor pin as an output */
@@ -193,6 +230,8 @@ void IMU_INIT() {
         mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_8);
 }
 
+
+
 /* Main task for the BMP280 get Altitude Fuction*/
 void getAltitude_main(xTask task_, xTaskParm param_) {
 
@@ -203,7 +242,7 @@ void getAltitude_main(xTask task_, xTaskParm param_) {
         if (notif) {
 
                 /* Read the altitude from the BMP280 sensor using the readAltitude() function */
-                float altitude = bmp.readAltitude(1025.05984940001); /* Change to your local pressure */
+                float altitude = bmp.readAltitude(1025.06); /* Change to your local pressure in hPa*/
 
                 /* Print the altitude value to the serial monitor */
                 Serial.print("\tALT=\t"); /* Print a label for the altitude value */
@@ -217,9 +256,9 @@ void getAltitude_main(xTask task_, xTaskParm param_) {
 
 /* Define a function named getYPR_main that takes a task and a parameter as input */
 void getYPR_main(xTask task_, xTaskParm param_) {
-        /* Declare two static double variables to store the last pitch and yaw values */
-        static double lastPitch;
-        static double lastYaw;
+        /* Declare two static float variables to store the last pitch and yaw values */
+        static float lastPitch;
+        static float lastYaw;
 
         /* Check if there is enough data in the FIFO buffer to process */
         if (fifoCount < packetSize) {
@@ -252,8 +291,8 @@ void getYPR_main(xTask task_, xTaskParm param_) {
                                 mpu.getAcceleration(&ax, &ay, &az);
 
                                 /* Calculate the current pitch and yaw values from the yaw-pitch-roll array */
-                                double curPitch = ypr[1] * 180 / PI + 90;
-                                double curYaw = ypr[2] * 180 / PI + 90;
+                                float curPitch = ypr[1] * 180 / PI + 90;
+                                float curYaw = ypr[2] * 180 / PI + 90;
 
                                 /* Print the current roll, pitch, and yaw values, as well as the angular rate of change in pitch and yaw over time */
                                 Serial.print("Roll:\t");
@@ -286,7 +325,7 @@ void getYPR_main(xTask task_, xTaskParm param_) {
 
 
 // void servoTaskX_main(xTask task_, xTaskParm parm_) {
-//         double roll;
+//         float roll;
 //         static int t;
 //         if (1440 == t) {
 //                 xTaskSuspend(task_);
@@ -299,7 +338,7 @@ void getYPR_main(xTask task_, xTaskParm param_) {
 // }
 
 // void servoTaskY_main(xTask task_, xTaskParm parm_) {
-//         double pitch;
+//         float pitch;
 //         static int t;
 //         if (1440 == t) {
 //                 xTaskSuspend(task_);
@@ -360,6 +399,10 @@ void setup() {
 
                 /* Set YPR update task period to 1ms */
                 xTaskChangePeriod(xTask_YPR_Update, 1);
+
+                while(!launch_Detected()){
+                        delay(.5);
+                }
 
                 /* Start the HeliOS scheduler */
                 xTaskStartScheduler();
