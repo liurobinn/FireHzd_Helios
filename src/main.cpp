@@ -12,8 +12,6 @@
 Servo X08_X;
 Servo X08_Y;
 
-PID xPID;
-PID yPID;
 
 /*Define buzzer with its pin number*/
 #define BUZZER_PIN 10
@@ -119,14 +117,54 @@ public:
 }
 };
 
+PID xPID;
+PID yPID;
+
 bool launch_Detected(){
-        mpu.getAcceleration(&ax, &ay, &az);
-        float curZ_Acc = (az/4096.0)*9.81;
-        if(curZ_Acc > CRITICAL_LAUNCH_ACCELERATION-2){
-                return true;
-        }else{
+        if (fifoCount < packetSize) {
+                /* If there is not enough data, get the number of bytes available in the FIFO buffer */
+                fifoCount = mpu.getFIFOCount();
+                Serial.print(millis());
+                Serial.println("\tGROUND");
                 return false;
+        } else {
+                /* If there is enough data in the FIFO buffer to process, check for FIFO overflow */
+                if (fifoCount == 1024) {
+                        /* If there is FIFO overflow, reset the FIFO buffer and print an error message */
+                        mpu.resetFIFO();
+                        Serial.println(F("FIFO overflow!"));
+                } else {
+                        /* If there is no FIFO overflow, check if the number of bytes in the FIFO buffer is a multiple of the packet size */
+                        if (fifoCount % packetSize != 0) {
+                                /* If the number of bytes in the FIFO buffer is not a multiple of the packet size, reset the FIFO buffer */
+                                mpu.resetFIFO();
+                        } else {
+                                /* If there is enough data in the FIFO buffer and no overflow, process the data in the buffer */
+                                while (fifoCount >= packetSize) {
+                                        /* Get the next packet of data from the FIFO buffer */
+                                        mpu.getFIFOBytes(fifoBuffer, packetSize);
+                                        /* Subtract the number of bytes in the packet from the number of bytes in the FIFO buffer */
+                                        fifoCount -= packetSize;
+                                }
+
+                                /* Get the quaternion, gravity, and yaw-pitch-roll values from the MPU sensor */
+                                mpu.dmpGetQuaternion(&q, fifoBuffer);
+                                mpu.dmpGetGravity(&gravity, &q);
+                                mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+                                mpu.getAcceleration(&ax, &ay, &az);
+                                float curZ_Acc = (az/4096.0)*9.81;
+                                if(curZ_Acc > CRITICAL_LAUNCH_ACCELERATION-2){
+                                        return true;
+                                }else{
+                                        Serial.print(millis());
+                                        Serial.println("\tGROUND");
+                                        return false;
+                                }
+                                
+                        }
+                }
         }
+        
 }
 
 void PYRO_INIT(){
@@ -144,9 +182,10 @@ void BMP_INIT(){
                                  "try a different address!"));
         }
         bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,         /* Operating Mode. */
-                        Adafruit_BMP280::SAMPLING_X4,         /* Temp. oversampling */
-                        Adafruit_BMP280::SAMPLING_X16,         /* Pressure oversampling */
-                        Adafruit_BMP280::FILTER_OFF);         /* Filtering. */
+                        Adafruit_BMP280::SAMPLING_X1,         /* Temp. oversampling */
+                        Adafruit_BMP280::SAMPLING_X2,         /* Pressure oversampling */
+                        Adafruit_BMP280::FILTER_OFF,
+                        Adafruit_BMP280::STANDBY_MS_1);         /* Filtering. */
 }
 
 /* LED Initiation*/
@@ -360,9 +399,6 @@ void setup() {
         /* Set I2C clock speed to 400kHz */
         TWBR = 24;
 
-        /* Print initialization message */
-        Serial.println("initialized");
-
         /* Attach servos to pins 3 and 4 */
         X08_X.attach(3);
         X08_Y.attach(4);
@@ -370,15 +406,8 @@ void setup() {
         /* Set servos to neutral position */
         X08_X.write(90);
         X08_Y.write(90);
-
-        /* Initialize IMU */
-        IMU_INIT();
-
-        /* Initialize barometer */
-        BMP_INIT();
-
         BUZZER_INIT();
-        BUZZER_TEST();
+        // BUZZER_TEST();
 
         LED_INIT();
         LED_TEST();
@@ -386,7 +415,10 @@ void setup() {
         PYRO_INIT();
         /* Initialize system tasks */
         xSystemInit();
-
+        /* Initialize IMU */
+        IMU_INIT();
+        /* Initialize barometer */
+        BMP_INIT();
         /* Create YPR and altitude update tasks */
         xTask xTask_YPR_Update = xTaskCreate("YPR", getYPR_main, NULL);
         xTask xTask_Altitude_Update = xTaskCreate("ALT", getAltitude_main, NULL);
@@ -399,8 +431,14 @@ void setup() {
 
                 /* Set YPR update task period to 1ms */
                 xTaskChangePeriod(xTask_YPR_Update, 1);
-
+                float startTime = millis();
+                
                 while(!launch_Detected()){
+                        if(millis()-startTime >= 5000){
+                                Serial.println("inactive for 5 seconds, system halt");
+                                delay(5);
+                                xSystemHalt();
+                        }
                         delay(.5);
                 }
 
