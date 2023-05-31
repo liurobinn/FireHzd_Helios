@@ -7,11 +7,14 @@
 #include <Wire.h>
 #include <SD.h>
 #include <SPI.h>
+#include <SimpleKalmanFilter.h>
+
 
 /*Define servo names for the TVC*/
 Servo X08_X;
 Servo X08_Y;
 
+SimpleKalmanFilter altFilter(20,20, 5);
 
 /*Define buzzer with its pin number*/
 #define BUZZER_PIN 10
@@ -183,7 +186,7 @@ void BMP_INIT(){
         }
         bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,         /* Operating Mode. */
                         Adafruit_BMP280::SAMPLING_X1,         /* Temp. oversampling */
-                        Adafruit_BMP280::SAMPLING_X2,         /* Pressure oversampling */
+                        Adafruit_BMP280::SAMPLING_X16,         /* Pressure oversampling */
                         Adafruit_BMP280::FILTER_OFF,
                         Adafruit_BMP280::STANDBY_MS_1);         /* Filtering. */
 }
@@ -281,9 +284,14 @@ void getAltitude_main(xTask task_, xTaskParm param_) {
         if (notif) {
 
                 /* Read the altitude from the BMP280 sensor using the readAltitude() function */
-                float altitude = bmp.readAltitude(1025.06); /* Change to your local pressure in hPa*/
+                float altitude = bmp.readAltitude(1013.25);
+                float KAL_altitude = altFilter.updateEstimate(altitude); /* Change to your local pressure in hPa*/
 
                 /* Print the altitude value to the serial monitor */
+                Serial.print("\tKAL_ALT=\t"); /* Print a label for the altitude value */
+                Serial.print(KAL_altitude); /* Print the altitude value */
+                Serial.print("\tm"); /* Print the unit of meters */
+
                 Serial.print("\tALT=\t"); /* Print a label for the altitude value */
                 Serial.print(altitude); /* Print the altitude value */
                 Serial.println("\tm"); /* Print the unit of meters */
