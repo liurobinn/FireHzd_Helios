@@ -10,6 +10,8 @@
 #include <SimpleKalmanFilter.h>
 
 
+//X IS THE OUTER RING
+//Y IS THE INNER RING
 
 double oppoLengthLawOfCosine (double a, double b, double angleInRadians){
     return sqrt(a*a + b*b - 2*a*b*cos(angleInRadians));
@@ -25,10 +27,6 @@ double oppoAngleLawOfCosine(double a, double b, double c) {
     return angle;
 }
 
-const double X_C = -AB;
-const double Y_C = -HC;
-
-
 /*Define servo names for the TVC*/
 Servo X08_X;
 Servo X08_Y;
@@ -37,6 +35,9 @@ SimpleKalmanFilter altFilter(20,20, 5);
 
 /*Define buzzer with its pin number*/
 #define BUZZER_PIN 10
+
+#define OFFSETX 1
+#define OFFSETY -3
 
 #define F15Impulse 25.26
 #define WETMASS 1.2
@@ -93,77 +94,45 @@ private:
         double lastErr = 90;
 
 public:
-        double p;
-        double i;
-        double d;
+        double p = 0.2;
+        double i = 0;
+        double d = 0.02;
 
-        double UPDATE(double curErr) { //curErr should be in degrees/s
+        double UPDATE(double curErr, double rate) { //curErr should be in degrees/s
                 double curTime = millis()/1000;
-                double dt = (curTime - lastTime);
                 double dx = curErr - lastErr;
                 lastErr=curErr;
+                integral += curErr*0.005;//Riemann sum
 
-                integral += curErr*dt;//Riemann sum
-
-                lastTime = millis()/1000;
-        return p*curErr + i*integral + d*dx/dt;
+                return p*curErr + i*integral + d*rate;
         }
 };
 
 PID xPID;
 PID yPID;
 
-class FourBarLinkage{
-private:
-        double AO=5; //Servo Arm Length CHANGE!!!
-        double AB=4; //Paper Clip length CHANGE!!!
-        double BC=8; //washer to mount length CHANGE!!!
+class FourBarLinkage{      
+public:        
+        double AO = 15; //Servo Arm Length CHANGE!!!
+        double AB = 30; //Paper Clip length CHANGE!!!
+        double BC = 39; //washer to mount length CHANGE!!!
+
         double HC=BC-AO;
         const double CO=sqrt(AB*AB+HC*HC);
-        const double beta= atan(HC/AB);
+        const double HCO= atan(AB/HC);
 
-        double alpha = M_PI/2+beta-OMEGA_AO*t;
-        double AC = oppoLengthLawOfCosine(AO, CO, alpha);
-        double gamma = oppoAngleLawOfCosine(BC, AC, AB);
-        double BCO = gamma + oppoAngleLawOfCosine(CO, AC, AO);
-        double BCB = BCO - atan(AB/HC);
-        double AOA = OMEGA_AO*t;
-        
-        double X_B = -BC*sin(BCB)+X_C;
-        double Y_B = BC*cos(BCB)+Y_C;
-
-        double X_A = -sin(OMEGA_AO*t)*AO;
-        double Y_A = cos(OMEGA_AO*t)*AO;
-        
-        double BA_i = X_A - X_B;
-        double BA_j = Y_A - Y_B;
-        
-        double OA_i = X_A;
-        double OA_j = Y_A;
-        
-        double CB_i = X_B-X_C;
-        double CB_j = Y_B-Y_C;
-
-         //cramer's rule
-        double OMEGA_AB = (OA_i*OMEGA_AO*CB_j - OA_j*OMEGA_AO*CB_i)/(BA_i*CB_j-BA_j*CB_i);
-        double OMEGA_BC = (BA_i*OA_j*OMEGA_AO-OA_i*OMEGA_AO*BA_j)/(BA_i*CB_j-BA_j*CB_i);
-
-public:
-        const double OMEGA_AO; //angular rate of servo that needs to be spinning based on the PID input. CHANGE IN THE CODE!!
-        int t = 3; // CHANGE!!! based on the PID sampling interval
-        
-        double getOMEGA_Paperclip (){
-                return OMEGA_AB;
+        double getAngleServo (double deviationBCB){
+                double BCO = (deviationBCB/180)*M_PI+HCO;
+                double BO = oppoLengthLawOfCosine(BC, CO, BCO);
+                double BOA = oppoAngleLawOfCosine(BO, AO, AB);
+                double AOA = atan(AB/AO)-BOA;
+                return (AOA/M_PI)*180;
         }
-
-        double getOMEGA_Motor (){
-                return OMEGA_BC;
-        }
-
-
-
-
 };
+
+FourBarLinkage FourBarTransformX;
+
+FourBarLinkage FourBarTransformY;
 
 bool launch_Detected(){
         if (fifoCount < packetSize) {
@@ -204,12 +173,10 @@ bool launch_Detected(){
                                         Serial.print(millis());
                                         Serial.println("\tGROUND");
                                         return false;
-                                }
-                                
+                                }     
                         }
                 }
-        }
-        
+        }      
 }
 
 void PYRO_INIT(){
@@ -217,6 +184,12 @@ void PYRO_INIT(){
         pinMode(PYRO_LR, OUTPUT);   /* Set the lower right pyroelectric sensor pin as an output */
         pinMode(PYRO_UL, OUTPUT);   /* Set the upper left pyroelectric sensor pin as an output */
         pinMode(PYRO_UR, OUTPUT);   /* Set the upper right pyroelectric sensor pin as an output */
+}
+
+void LAUNCH_IGNITION(){
+        digitalWrite(PYRO_LR, HIGH);
+        delay(50);
+        digitalWrite(PYRO_LR, LOW);
 }
 
 /* BMP280 Initiation*/
@@ -384,18 +357,36 @@ void getYPR_main(xTask task_, xTaskParm param_) {
                                 float curYaw = ypr[2] * 180 / PI + 90;
 
                                 /* Print the current roll, pitch, and yaw values, as well as the angular rate of change in pitch and yaw over time */
-                                Serial.print("Roll:\t");
-                                Serial.print(ypr[0] * 180 / PI);
-                                Serial.print("\tPitch:\t");
-                                Serial.print(curPitch);
-                                Serial.print("\tYaw:\t");
-                                Serial.print(curYaw);
-                                Serial.print("\tAccZ:\t");
-                                Serial.print((az/4096.0)*9.81);
-                                Serial.print("\tAngularRate_Pitch:\t");
-                                Serial.print((curPitch - lastPitch) / 0.005);
-                                Serial.print("\tAngularRate_Yaw:\t");
-                                Serial.print((curYaw - lastYaw) / 0.005);
+                                // Serial.print("Roll:\t");
+                                // Serial.print(ypr[0] * 180 / PI);
+
+                                // Serial.print("\tPitch:\t");
+                                // Serial.print(curPitch);
+
+                                // Serial.print("\tYaw:\t");
+                                // Serial.print(curYaw);
+
+                                // Serial.print("\tAccZ:\t");
+                                // Serial.print((az/4096.0)*9.81);
+                                double AngularRate_Pitch = (curPitch - lastPitch) / 0.005;
+                                // Serial.print("\tAngularRate_Pitch:\t");
+                                // Serial.print(AngularRate_Pitch);
+
+                                double AngularRate_Yaw = (curYaw - lastYaw) / 0.005;
+                                // Serial.print("\tAngularRate_Yaw:\t");
+                                // Serial.print(AngularRate_Yaw);
+
+                                double errorX = 90-curPitch;
+                                double errorY = 90-curYaw;
+                                // Serial.print("\tActX\t");
+                                // Serial.print(FourBarTransform.getAngleServo(xPID.UPDATE(errorX,AngularRate_Pitch))+90);
+                                double ServoXError = FourBarTransformX.getAngleServo(xPID.UPDATE(errorX,AngularRate_Pitch));
+                                double ServoYError = FourBarTransformY.getAngleServo(yPID.UPDATE(errorY,AngularRate_Yaw));
+
+                                if(abs(ServoXError)<=10) X08_X.write(ServoXError+90+OFFSETX);
+                                if(abs(ServoYError)<=10) X08_Y.write(-1*ServoYError+90+OFFSETY);
+                                // Serial.print("\ttActY\t");
+                                // Serial.print(FourBarTransform.getAngleServo(yPID.UPDATE(errorY,AngularRate_Yaw))+90);
 
                                 /* Store the current pitch and yaw values as the last pitch and yaw values for the next iteration */
                                 lastPitch = curPitch;
@@ -411,33 +402,17 @@ void getYPR_main(xTask task_, xTaskParm param_) {
         }
 }
 
+void TVC_TEST(){
+        //rotation test
+        for (int t=0; t>= 0 && t <=1440; t++) {
+                roll=asin(0.03*cos((3.14/180)*t));
+                pitch=asin(0.03*sin((3.14/180)*t));
 
-
-// void servoTaskX_main(xTask task_, xTaskParm parm_) {
-//         float roll;
-//         static int t;
-//         if (1440 == t) {
-//                 xTaskSuspend(task_);
-//         }
-//         roll=asin(0.05*cos((3.14/180)*t));
-//         X08_X.write(roll*180+90);
-//         t++;
-//         Serial.println(t);
-//         return;
-// }
-
-// void servoTaskY_main(xTask task_, xTaskParm parm_) {
-//         float pitch;
-//         static int t;
-//         if (1440 == t) {
-//                 xTaskSuspend(task_);
-//         }
-//         pitch=asin(0.07*sin((3.14/180)*t));
-//         X08_Y.write(pitch*180+90);
-//         t++;
-//         Serial.println(t);
-//         return;
-// }
+                X08_X.write(FourBarTransformX.getAngleServo(roll * 180)+90+OFFSETX);
+                X08_Y.write(FourBarTransformY.getAngleServo(pitch * 180)+90+OFFSETY);
+                delay(5);
+        }
+}
 
 void setup() {
         /* Initialize serial communication */
@@ -448,14 +423,29 @@ void setup() {
 
         /* Set I2C clock speed to 400kHz */
         TWBR = 24;
-
+        
         /* Attach servos to pins 3 and 4 */
         X08_X.attach(3);
         X08_Y.attach(4);
 
         /* Set servos to neutral position */
-        X08_X.write(90);
-        X08_Y.write(90);
+        X08_X.write(90+OFFSETX);
+        X08_Y.write(90+OFFSETY);
+
+        // delay(1000000000);
+        FourBarTransformX.AO = 15;
+        FourBarTransformX.AB = 30;
+        FourBarTransformX.BC = 39;
+
+        FourBarTransformY.AO = 15;
+        FourBarTransformY.AB = 27;
+        FourBarTransformY.BC = 33;
+
+        TVC_TEST();
+        
+        X08_X.write(90+OFFSETX);
+        X08_Y.write(90+OFFSETY);
+
         BUZZER_INIT();
         // BUZZER_TEST();
 
@@ -479,6 +469,8 @@ void setup() {
                 xTaskWait(xTask_YPR_Update);
                 xTaskWait(xTask_Altitude_Update);
 
+                // LAUNCH_IGNITION(); //Launch Ignition
+
                 /* Set YPR update task period to 1ms */
                 xTaskChangePeriod(xTask_YPR_Update, 1);
 
@@ -487,15 +479,15 @@ void setup() {
                 while(!launch_Detected()){
                         if(millis()-startTime >= 5000){
                                 Serial.println(OVERTIME_ERROR);
+                                digitalWrite(10,HIGH);
                                 delay(5);
                                 xSystemHalt();
                         }
                         delay(.5);
                 }
-
                 /* Start the HeliOS scheduler */
                 xTaskStartScheduler();
-
+                
                 /* Delete tasks when they complete execution */
                 xTaskDelete(xTask_YPR_Update);
                 xTaskDelete(xTask_Altitude_Update);
