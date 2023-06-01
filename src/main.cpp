@@ -13,6 +13,27 @@
 //X IS THE OUTER RING
 //Y IS THE INNER RING
 
+File myFile;
+const int chipSelect = BUILTIN_SDCARD;
+
+void INIT(){
+                if (!SD.begin(chipSelect)) {
+                //Serial.println("error");
+                return;
+                }
+                myFile = SD.open("RealFlight.csv", FILE_WRITE);
+                myFile.print("Time (s)"); myFile.print("\t");
+
+                myFile.print("Rotation X (deg)"); myFile.print("\t");
+                myFile.print("Rotation Y (deg)"); myFile.print("\t");
+                myFile.print("Rotation Z (deg)"); myFile.print("\t");
+
+                myFile.print("Altitude (ft)"); myFile.print("\t");
+                myFile.close();          
+
+}
+
+
 double oppoLengthLawOfCosine (double a, double b, double angleInRadians){
     return sqrt(a*a + b*b - 2*a*b*cos(angleInRadians));
 }
@@ -496,7 +517,7 @@ void setup() {
                 xTaskWait(xTask_YPR_Update);
                 xTaskWait(xTask_Altitude_Update);
 
-                COUNTDOWN_ONE_MIN();
+                // COUNTDOWN_ONE_MIN();
                 // LAUNCH_IGNITION(); //Launch Ignition
 
                 /* Set YPR update task period to 1ms */
