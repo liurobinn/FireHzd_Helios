@@ -10,6 +10,25 @@
 #include <SimpleKalmanFilter.h>
 
 
+
+double oppoLengthLawOfCosine (double a, double b, double angleInRadians){
+    return sqrt(a*a + b*b - 2*a*b*cos(angleInRadians));
+}
+
+double oppoAngleLawOfCosine(double a, double b, double c) {
+    // Calculate the cosine of the unknown angle using the law of cosines
+    double cos_angle = (a*a + b*b - c*c) / (2*a*b);
+
+    // Convert the cosine to an angle in radians using the inverse cosine function
+    double angle = acos(cos_angle);
+
+    return angle;
+}
+
+const double X_C = -AB;
+const double Y_C = -HC;
+
+
 /*Define servo names for the TVC*/
 Servo X08_X;
 Servo X08_Y;
@@ -34,6 +53,9 @@ SimpleKalmanFilter altFilter(20,20, 5);
 #define PYRO_UR 6
 #define PYRO_LR 7
 #define PYRO_LL 8
+
+
+#define OVERTIME_ERROR "Inactive for 5 seconds, system halt......"
 
 bool blinkState = false;
 bool dmpReady = false;
@@ -64,64 +86,84 @@ Adafruit_BMP280 bmp;
 Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
 Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
 
-float determinant(float matrix[][10], int n) {
-        float det = 0; /* initialize determinant */
-        if (n == 1) { /* base case for 1x1 matrix */
-                det = matrix[0][0];
-        } else if (n == 2) { /* base case for 2x2 matrix */
-                det = matrix[0][0]*matrix[1][1] - matrix[0][1]*matrix[1][0];
-        } else { /* recursive case */
-                for (int k = 0; k < n; k++) { /* iterate over first row to create submatrices */
-                        float submatrix[10][10]; /* initialize submatrix */
-                        int i = 0;
-                        for (int row = 1; row < n; row++) { /* iterate over rows to create submatrix */
-                                int j = 0;
-                                for (int col = 0; col < n; col++) { /* iterate over columns to create submatrix */
-                                        if (col != k) { /* exclude the column being used to create submatrix */
-                                                submatrix[i][j] = matrix[row][col];
-                                                j++;
-                                        }
-                                }
-                                i++;
-                        }
-                        det += pow(-1, k)*matrix[0][k]*determinant(submatrix, n-1); /* recursively calculate determinant of submatrix */
-                }
-        }
-        return det; /* return the determinant */
-}
-// float matrix[4][4] = {{1, 2, 3, 4},
-//                       {5, 6, 7, 8},
-//                       {9, 10, 11, 12},
-//                       {13, 14, 15, 16}};
-// int n = 4;
-// float det = determinant(matrix, n);
-// Serial.print("Determinant = ");
-// Serial.println(det);
-
 class PID {
 private:
-        float lastTime = micros();
-        float integral = 0;
-        float lastErr = 90      ;
+        double lastTime = millis();
+        double integral = 0;
+        double lastErr = 90;
 
 public:
-        float p;
-        float i;
-        float d;
+        double p;
+        double i;
+        double d;
 
-        float UPDATE(float curErr) { //curErr should be in degrees/s
-                float curTime = millis()/1000;
-                float dt = (curTime - lastTime);
-                float dx = curErr - lastErr;
+        double UPDATE(double curErr) { //curErr should be in degrees/s
+                double curTime = millis()/1000;
+                double dt = (curTime - lastTime);
+                double dx = curErr - lastErr;
                 lastErr=curErr;
-                integral += curErr*dt;
+
+                integral += curErr*dt;//Riemann sum
+
                 lastTime = millis()/1000;
         return p*curErr + i*integral + d*dx/dt;
-}
+        }
 };
 
 PID xPID;
 PID yPID;
+
+class FourBarLinkage{
+private:
+        double AO=5; //Servo Arm Length CHANGE!!!
+        double AB=4; //Paper Clip length CHANGE!!!
+        double BC=8; //washer to mount length CHANGE!!!
+        double HC=BC-AO;
+        const double CO=sqrt(AB*AB+HC*HC);
+        const double beta= atan(HC/AB);
+
+        double alpha = M_PI/2+beta-OMEGA_AO*t;
+        double AC = oppoLengthLawOfCosine(AO, CO, alpha);
+        double gamma = oppoAngleLawOfCosine(BC, AC, AB);
+        double BCO = gamma + oppoAngleLawOfCosine(CO, AC, AO);
+        double BCB = BCO - atan(AB/HC);
+        double AOA = OMEGA_AO*t;
+        
+        double X_B = -BC*sin(BCB)+X_C;
+        double Y_B = BC*cos(BCB)+Y_C;
+
+        double X_A = -sin(OMEGA_AO*t)*AO;
+        double Y_A = cos(OMEGA_AO*t)*AO;
+        
+        double BA_i = X_A - X_B;
+        double BA_j = Y_A - Y_B;
+        
+        double OA_i = X_A;
+        double OA_j = Y_A;
+        
+        double CB_i = X_B-X_C;
+        double CB_j = Y_B-Y_C;
+
+         //cramer's rule
+        double OMEGA_AB = (OA_i*OMEGA_AO*CB_j - OA_j*OMEGA_AO*CB_i)/(BA_i*CB_j-BA_j*CB_i);
+        double OMEGA_BC = (BA_i*OA_j*OMEGA_AO-OA_i*OMEGA_AO*BA_j)/(BA_i*CB_j-BA_j*CB_i);
+
+public:
+        const double OMEGA_AO; //angular rate of servo that needs to be spinning based on the PID input. CHANGE IN THE CODE!!
+        int t = 3; // CHANGE!!! based on the PID sampling interval
+        
+        double getOMEGA_Paperclip (){
+                return OMEGA_AB;
+        }
+
+        double getOMEGA_Motor (){
+                return OMEGA_BC;
+        }
+
+
+
+
+};
 
 bool launch_Detected(){
         if (fifoCount < packetSize) {
@@ -289,7 +331,7 @@ void getAltitude_main(xTask task_, xTaskParm param_) {
 
                 /* Print the altitude value to the serial monitor */
                 Serial.print("\tKAL_ALT=\t"); /* Print a label for the altitude value */
-                Serial.print(KAL_altitude); /* Print the altitude value */
+                Serial.print(KAL_altitude,1); /* Print the altitude value */
                 Serial.print("\tm"); /* Print the unit of meters */
 
                 Serial.print("\tALT=\t"); /* Print a label for the altitude value */
@@ -439,11 +481,12 @@ void setup() {
 
                 /* Set YPR update task period to 1ms */
                 xTaskChangePeriod(xTask_YPR_Update, 1);
-                float startTime = millis();
+
+                float startTime = millis(); /*Set starting time to detect system inactive*/
                 
                 while(!launch_Detected()){
                         if(millis()-startTime >= 5000){
-                                Serial.println("inactive for 5 seconds, system halt");
+                                Serial.println(OVERTIME_ERROR);
                                 delay(5);
                                 xSystemHalt();
                         }
