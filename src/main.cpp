@@ -414,6 +414,33 @@ void TVC_TEST(){
         }
 }
 
+void COUNTDOWN_ONE_MIN(){
+                int i=1;
+                int counter;
+                for(counter=6; counter >1; counter--) {
+                        for (i=1; i<=counter; i++) {
+                                digitalWrite(10,HIGH);
+                                digitalWrite(15,LOW);
+                                delay(200);
+                                digitalWrite(10,LOW);
+                                digitalWrite(15,HIGH);
+                                delay(200);
+                        }
+                        digitalWrite(10,LOW);
+                        digitalWrite(15,HIGH);
+                        delay(10000);
+                }
+                int finalCount;
+                for (finalCount=0; finalCount <= 10; finalCount++){
+                digitalWrite(10,HIGH);
+                digitalWrite(15,LOW);
+                delay(500);
+                digitalWrite(10,LOW);
+                digitalWrite(15,HIGH);
+                delay(500);
+              }
+}
+
 void setup() {
         /* Initialize serial communication */
         Serial.begin(9600);
@@ -447,7 +474,7 @@ void setup() {
         X08_Y.write(90+OFFSETY);
 
         BUZZER_INIT();
-        // BUZZER_TEST();
+        BUZZER_TEST();
 
         LED_INIT();
         LED_TEST();
@@ -469,6 +496,7 @@ void setup() {
                 xTaskWait(xTask_YPR_Update);
                 xTaskWait(xTask_Altitude_Update);
 
+                COUNTDOWN_ONE_MIN();
                 // LAUNCH_IGNITION(); //Launch Ignition
 
                 /* Set YPR update task period to 1ms */
